@@ -1,0 +1,143 @@
+cd "E:\O365AutoTestbyAPI\UserContentLoginSamples"
+
+
+#HelloWorld "HunDun"
+$Version = "1.0"
+[string] $LogPath = "$pwd\$env:ComputerName.log"
+
+#Write-Log -Message "v$Version script started by $env:UserDomain\$env:UserName" -NoConsole 
+
+
+[void] [System.Reflection.Assembly]::LoadWithPartialName("System.Windows.Forms")
+
+#Andy App
+$AppID="##################"       # Application GUID
+ 
+$AppKey="*********************"  # Application Secret Key
+ 
+$RedirectURI="http://#####URL####"     # Single-Sign-On URL
+ 
+$ResourceID="https://microsoftgraph.chinacloudapi.cn/" # Resource ID
+
+ 
+$env:accessToken = "$pwd\tokenbyuser.txt"
+$env:refereshToken = "$pwd\refereshToken.txt"
+$env:newToken = "$pwd\newtoken.txt"
+
+$env:appLog = "$pwd\applog.txt"
+
+$accessToken=""
+
+#获取访问令牌
+If (Test-Path -Path $env:accessToken) {
+	$accessToken = Get-Content $env:accessToken
+}
+else {
+    $accessToken = $null
+}
+
+# 检查AccessToken是否过期，默认为1小时
+# 这里每45分钟使用refreshtoken重新申请accessToken
+
+If ( ($accessToken -eq $null)   -or  (( ( get-date ) - (get-item $env:accessToken).LastWriteTime).Minutes -gt 45 ) -or  (( ( get-date ) - (get-item $env:accessToken).LastWriteTime).Hours -gt 1 ) -or  (( ( get-date ) - (get-item $env:accessToken).LastWriteTime).Days -gt 1 )   )
+{
+
+      # Get the refreshToken
+      If (Test-Path -Path $env:refereshToken) 
+      {
+        HelloWorld "Jack"
+        $refreshToken = Get-Content $env:refereshToken
+
+        Write-Host "Refresh Toekn is executing....." -ForegroundColor Yellow
+        $refreshBody = "grant_type=refresh_token&redirect_uri=$RedirectURI&client_id=$AppID&client_secret=$AppKey&refresh_token=$refreshToken&resource=$ResourceID"
+        $Authorization = Invoke-RestMethod https://login.partner.microsoftonline.cn/common/oauth2/token -Method Post -ContentType "application/x-www-form-urlencoded" -Body $refreshBody  -UseBasicParsing 
+        $Authorization
+
+        # Save new token
+        # Store AuthCode
+        Set-Content $env:accessToken $Authorization.access_token -Force
+        Set-Content $env:refereshToken $Authorization.refresh_token -Force
+        Set-Content $env:newToken $Authorization
+
+        $accessToken = $Authorization.access_token
+        $a=get-date
+        "$a - request refresh" | Out-File $env:appLog -Append -Encoding utf8
+      }
+   
+      If ($Authorization -eq $null) {
+
+        $form = New-Object Windows.Forms.Form
+        
+        $form.text = "Authenticate for o365"
+        
+        $form.size = New-Object Drawing.size @(700,600)
+        
+        $form.Width = 675
+        
+        $form.Height = 880
+        
+        $web = New-object System.Windows.Forms.WebBrowser
+        
+        $web.IsWebBrowserContextMenuEnabled = $true
+        
+        $web.Width = 600
+        
+        $web.Height = 760
+        
+        $web.Location = "25, 25"
+        
+        $web.navigate("https://login.partner.microsoftonline.cn/common/oauth2/authorize?response_type=code&client_id="+$AppID+"&redirect_uri="+$RedirectURI)
+        
+        $DocComplete  = {
+        
+            $Global:uri = $web.Url.AbsoluteUri
+        
+            if ($web.Url.AbsoluteUri -match "code=|error") {$form.Close() }
+        }
+                $web.Add_DocumentCompleted($DocComplete)
+        
+        $form.Controls.Add($web)
+        $form.showdialog() | out-null
+        
+        # Build object from last URI (which should contains the token)
+        
+        $ReturnURI=($web.Url).ToString().Replace("#","&")
+        
+        $Code = New-Object PSObject
+        
+        ForEach ($element in $ReturnURI.Split("?")[1].Split("&")) 
+        
+        {
+        
+            $Code | add-member Noteproperty $element.split("=")[0] $element.split("=")[1]
+        
+        }
+     #Get authentication token
+     $body="client_id="+$AppID+"&redirect_uri="+$RedirectURI+"&client_secret="+$AppKey+"&code="+$Code.code+"&grant_type=authorization_code&resource="+$ResourceID
+     $Response = Invoke-WebRequest -Method Post -ContentType "application/x-www-form-urlencoded" "https://login.chinacloudapi.cn/common/oauth2/token" -body $body
+     $Authentication = $Response.Content|ConvertFrom-Json
+    
+    #$Authentication
+    # Store AuthCode
+     Set-Content $env:accessToken $Authentication.access_token
+     Set-Content $env:refereshToken $Authentication.refresh_token
+     $accessToken = $Authentication.access_token
+    }
+}
+else {
+    Write-Host "Token exist, skipping token" -ForegroundColor Yellow
+}
+
+
+#Samples:
+ 
+$headers = @{ 
+            "Authorization" = ("Bearer {0}" -f $accessToken);
+            "Content-Type" = "application/json";
+        }
+        
+write-host("Get User Profile:")
+
+$Response=Invoke-WebRequest -Method GET -Uri ($ResourceID+"/v1.0/me") -Header $headers -ErrorAction Stop
+$responseObject = ConvertFrom-Json $Response.Content
+$responseObject
