@@ -1,0 +1,13 @@
+
+#This is for file size smaller than 4MB
+
+$access_token = $accessToken
+$path = "E:/O365AutoTestbyAPI/testapiuploadps.txt"
+
+$url = "https://microsoftgraph.chinacloudapi.cn/v1.0/me/drive/root:/testapiupload.txt:/content"
+#$headers = @{'Authorization' = "Bearer $access_token" }
+
+Invoke-RestMethod -Uri $url -Headers $headers -Method Put -InFile $path -ContentType 'multipart/form-data'
+
+
+#if your file size over 4MB, need initialize one upload session
